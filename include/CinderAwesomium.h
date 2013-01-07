@@ -1,12 +1,14 @@
 #pragma once
 
 #include <Awesomium/WebCore.h>
+#include <Awesomium/WebViewListener.h>
 #include <Awesomium/BitmapSurface.h>
 #include <Awesomium/STLHelpers.h>
 
 #include "cinder/Exception.h"
 #include "cinder/Surface.h"
 #include "cinder/app/AppBasic.h"
+#include "cinder/app/Window.h"
 #include "cinder/gl/Texture.h"
 
 namespace ph { namespace awesomium {
@@ -262,6 +264,67 @@ Awesomium::WebKeyboardEvent toKeyChar( ci::app::KeyEvent event )
 
 	return evt;
 } 
+
+// helper class which acts as a default ViewListener
+
+class WebViewListener : public Awesomium::WebViewListener::View
+{
+public:
+	WebViewListener() {}
+	virtual ~WebViewListener() {}
+
+	virtual void OnChangeAddressBar( Awesomium::WebView *caller, const Awesomium::WebURL &url );
+	virtual void OnChangeTitle( Awesomium::WebView *caller, const Awesomium::WebString &title );
+	virtual void OnChangeCursor( Awesomium::WebView *caller, Awesomium::Cursor cursor );
+
+	// not used, but you can override them in your own derived class
+	virtual void OnChangeTooltip (Awesomium::WebView *caller, const Awesomium::WebString &tooltip) {}
+	virtual void OnChangeTargetURL (Awesomium::WebView *caller, const Awesomium::WebURL &url) {}
+	virtual void OnChangeFocus (Awesomium::WebView *caller, Awesomium::FocusedElementType focused_type) {}
+	virtual void OnShowCreatedWebView (Awesomium::WebView *caller, Awesomium::WebView *new_view, 
+		const Awesomium::WebURL &opener_url, const Awesomium::WebURL &target_url, 
+		const Awesomium::Rect &rect, bool is_popup) {}
+};
+
+void WebViewListener::OnChangeAddressBar( Awesomium::WebView *caller, const Awesomium::WebURL &url ) {
+	char str[1024];	url.spec().ToUTF8( str, 1024 );
+	ci::app::console() << "URL loaded: " << str << std::endl;
+}
+
+void WebViewListener::OnChangeTitle( Awesomium::WebView *caller, const Awesomium::WebString &title )
+{
+	char str[1024];	title.ToUTF8( str, 1024 );
+	ci::app::getWindow()->setTitle( str );
+}
+
+void WebViewListener::OnChangeCursor( Awesomium::WebView *caller, Awesomium::Cursor cursor )
+{
+#if( defined CINDER_MSW )
+	// support for built-in cursors only
+	HCURSOR	hCursor;
+
+	switch( cursor )
+	{
+	case Awesomium::Cursor::kCursor_Hand:
+		hCursor = ::LoadCursor( 0, IDC_HAND );
+		break;
+	case Awesomium::Cursor::kCursor_IBeam:
+		hCursor = ::LoadCursor( NULL, IDC_IBEAM );
+		break;
+	case Awesomium::Cursor::kCursor_Wait:
+		hCursor = ::LoadCursor( NULL, IDC_WAIT );
+		break;
+	case Awesomium::Cursor::kCursor_Move:
+		hCursor = ::LoadCursor( NULL, IDC_SIZE );
+		break;
+	default:
+		hCursor = ::LoadCursor( NULL, IDC_ARROW );
+		break;
+	}
+
+	::SetCursor( hCursor );
+#endif
+}
 
 // Utility functions that take care of event handling
 
