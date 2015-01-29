@@ -1,5 +1,7 @@
 #include "CinderAwesomium.h"
 
+#include "cinder/Log.h"
+
 namespace ph { namespace awesomium {
 
 // Translates a Cinder virtual key code to an Awesomium key code
@@ -223,5 +225,365 @@ Awesomium::WebKeyboardEvent toKeyChar( ci::app::KeyEvent event )
 
 	return evt;
 } 
+
+TouchDataManager::TouchDataManager()
+{
+	for ( int id = 0; id < MAX_TOUCHDATA_NUM; ++id )
+		mAvailableAwesomiumIds.insert( id );
+}
+
+TouchDataManager::~TouchDataManager()
+{
+	assert( mAvailableAwesomiumIds.size() == MAX_TOUCHDATA_NUM );
+}
+
+void TouchDataManager::addTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
+{
+	if ( mTouchDataMap.size() >= MAX_TOUCHDATA_NUM )
+	{
+		CI_LOG_I( "!!! reached max num (" << id << ") " << pos );
+		return;
+	}
+
+	if ( mTouchDataMap.find( id ) != mTouchDataMap.end() )
+	{
+		CI_LOG_I( "!!! data already in (" << id << ") " << pos );
+	}
+	else
+	{
+		CI_LOG_I( "addTouch (" << id << ") " << pos );
+		TouchData touchData( id, lockAwesomiumId(), pos, posScreen, TouchData::Status::ADDED );
+		mTouchDataMap[ id ] = touchData;
+	}
+}
+
+void TouchDataManager::moveTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
+{
+	if ( mTouchDataMap.find( id ) == mTouchDataMap.end() )
+	{
+		CI_LOG_I( "!!! not found (" << id << ") " << pos );
+		if ( mTouchDataMap.size() < MAX_TOUCHDATA_NUM )
+		{
+			CI_LOG_I( "!!! add (" << id << ") " << pos );
+			TouchData touchData( id, lockAwesomiumId(), pos, posScreen, TouchData::Status::ADDED );
+			mTouchDataMap[ id ] = touchData;
+		}
+	}
+	else
+	{
+		CI_LOG_I( "move (" << id << ") " << pos );
+		mTouchDataMap[ id ].mPos = pos;
+		mTouchDataMap[ id ].mPosScreen = posScreen;
+		if ( mTouchDataMap[ id ].mStatus == TouchData::Status::HANDLED )
+			mTouchDataMap[ id ].mStatus = TouchData::Status::UPDATED;
+	}
+}
+
+void TouchDataManager::removeTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
+{
+	if ( mTouchDataMap.find( id ) == mTouchDataMap.end() )
+	{
+		CI_LOG_I( "!!! not found (" << id << ") " << pos );
+	}
+	else
+	{
+		if ( mTouchDataMap[ id ].mStatus == TouchData::Status::ADDED )
+		{
+			unlockAwesomiumId( mTouchDataMap[ id ].mAwesomiumId );
+			mTouchDataMap.erase( id );
+			CI_LOG_I( "delete (" << id << ") " << pos << " - hasn't been added" );
+			return;
+		}
+
+		CI_LOG_I( "set remove (" << id << ") " << pos );
+		mTouchDataMap[ id ].mPos = pos;
+		mTouchDataMap[ id ].mPosScreen = posScreen;
+		mTouchDataMap[ id ].mStatus = TouchData::Status::RELEASED;
+	}
+}
+
+void TouchDataManager::fillWebTouchPoint( Awesomium::WebTouchPoint *webTouchPoint, int pos, TouchData &touchData )
+{
+	webTouchPoint[ pos ].state = Awesomium::kWebTouchPointState_Stationary;
+	webTouchPoint[ pos ].id = touchData.mAwesomiumId;
+	webTouchPoint[ pos ].screen_position_x = touchData.mPosScreen.x;
+	webTouchPoint[ pos ].screen_position_y = touchData.mPosScreen.y;
+	webTouchPoint[ pos ].position_x = touchData.mPos.x;
+	webTouchPoint[ pos ].position_y = touchData.mPos.y;
+	webTouchPoint[ pos ].radius_x = 1;
+	webTouchPoint[ pos ].radius_y = 1;
+	webTouchPoint[ pos ].rotation_angle = 0;
+	webTouchPoint[ pos ].force = 0;
+}
+
+bool TouchDataManager::fillWebTouchEventAll( Awesomium::WebTouchEvent &webTouchEvent )
+{
+	webTouchEvent.touches_length = 0;
+	webTouchEvent.target_touches_length = 0;
+	webTouchEvent.changed_touches_length = 0;
+
+	bool hasAdded = false;
+	bool hasUpdated = false;
+	bool hasReleased = false;
+	for ( auto& it : mTouchDataMap )
+	{
+		TouchData& touchData = it.second;
+
+		fillWebTouchPoint( webTouchEvent.touches, webTouchEvent.touches_length, touchData );
+
+		switch ( touchData.mStatus )
+		{
+		case TouchData::Status::ADDED    : { webTouchEvent.touches[ webTouchEvent.touches_length ].state = Awesomium::kWebTouchPointState_Pressed; touchData.mStatus = TouchData::Status::HANDLED; hasAdded    = true; } break;
+		case TouchData::Status::UPDATED  : { webTouchEvent.touches[ webTouchEvent.touches_length ].state = Awesomium::kWebTouchPointState_Moved;   touchData.mStatus = TouchData::Status::HANDLED; hasUpdated  = true; } break;
+		case TouchData::Status::RELEASED : { webTouchEvent.touches[ webTouchEvent.touches_length ].state = Awesomium::kWebTouchPointState_Released;                                                hasReleased = true; } break;
+		case TouchData::Status::HANDLED  : /* do nothing */ break;
+		default: assert( false );
+		}
+		webTouchEvent.touches_length++;
+	}
+
+	if ( hasReleased )
+	{
+		auto it = mTouchDataMap.begin();
+		while ( it != mTouchDataMap.end() )
+		{
+			if ( it->second.mStatus == TouchData::Status::RELEASED )
+			{
+				CI_LOG_I( "delete (" << it->second.mId << ") " << it->second.mPos );
+				unlockAwesomiumId( it->second.mAwesomiumId );
+				mTouchDataMap.erase( it++ );
+				continue;
+			}
+			++it;
+		}
+	}
+
+	return hasAdded || hasUpdated || hasReleased;
+}
+/*
+bool TouchDataManager::fillWebTouchEventAdd( Awesomium::WebTouchEvent &webTouchEvent )
+{
+	webTouchEvent.touches_length = 0;
+	webTouchEvent.target_touches_length = 0;
+	webTouchEvent.changed_touches_length = 0;
+
+	bool ret = false;
+	for ( auto& it : mTouchDataMap )
+	{
+		TouchData& touchData = it.second;
+
+		fillWebTouchPoint( webTouchEvent.touches, webTouchEvent.touches_length, touchData );
+
+		if ( touchData.mStatus == TouchData::Status::ADDED )
+		{
+			webTouchEvent.touches[ webTouchEvent.touches_length ].state = Awesomium::kWebTouchPointState_Pressed;
+			touchData.mStatus = TouchData::Status::HANDLED;
+			ret = true;
+		}
+
+		webTouchEvent.touches_length++;
+	}
+
+	return ret;
+}
+
+bool TouchDataManager::fillWebTouchEventMove( Awesomium::WebTouchEvent &webTouchEvent )
+{
+	webTouchEvent.touches_length = 0;
+	webTouchEvent.target_touches_length = 0;
+	webTouchEvent.changed_touches_length = 0;
+
+	bool ret = false;
+	for ( auto& it : mTouchDataMap )
+	{
+		TouchData& touchData = it.second;
+
+		fillWebTouchPoint( webTouchEvent.touches, webTouchEvent.touches_length, touchData );
+
+		if ( touchData.mStatus == TouchData::Status::UPDATED )
+		{
+			webTouchEvent.touches[ webTouchEvent.touches_length ].state = Awesomium::kWebTouchPointState_Moved;
+			touchData.mStatus = TouchData::Status::HANDLED;
+			ret = true;
+		}
+
+		webTouchEvent.touches_length++;
+	}
+
+	return ret;
+}
+
+bool TouchDataManager::fillWebTouchEventRemove( Awesomium::WebTouchEvent &webTouchEvent )
+{
+	webTouchEvent.touches_length = 0;
+	webTouchEvent.target_touches_length = 0;
+	webTouchEvent.changed_touches_length = 0;
+
+	bool ret = false;
+	for ( auto& it : mTouchDataMap )
+	{
+		TouchData& touchData = it.second;
+
+		fillWebTouchPoint( webTouchEvent.touches, webTouchEvent.touches_length, touchData );
+
+		if ( touchData.mStatus == TouchData::Status::RELEASED )
+		{
+			webTouchEvent.touches[ webTouchEvent.touches_length ].state = Awesomium::kWebTouchPointState_Released;
+			ret = true;
+		}
+
+		webTouchEvent.touches_length++;
+	}
+
+	if ( ret )
+	{
+		auto it = mTouchDataMap.begin();
+		while ( it != mTouchDataMap.end() )
+		{
+			if ( it->second.mStatus == TouchData::Status::RELEASED )
+			{
+				unlockAwesomiumId( it->second.mAwesomiumId ),
+					mTouchDataMap.erase( it++ );
+			}
+			else
+			{
+				++it;
+			}
+		}
+	}
+
+	return ret;
+}
+*/
+int TouchDataManager::lockAwesomiumId()
+{
+	for ( int id = 0; id < MAX_TOUCHDATA_NUM; ++id )
+	{
+		if ( mAvailableAwesomiumIds.find( id ) != mAvailableAwesomiumIds.end() )
+		{
+			mAvailableAwesomiumIds.erase( id );
+			ci::app::console() << "Lock awesomium id: " << id << std::endl;
+			return id;
+		}
+	}
+
+	assert( false );
+	return -1;
+}
+
+void TouchDataManager::unlockAwesomiumId( int id )
+{
+	ci::app::console() << "Unlock awesomium id: " << id << std::endl;
+	assert( id >= 0 && id < MAX_TOUCHDATA_NUM );
+	assert( mAvailableAwesomiumIds.find( id ) == mAvailableAwesomiumIds.end() );
+
+	mAvailableAwesomiumIds.insert( id );
+}
+
+WebViewEventHandler::WebViewEventHandler( Awesomium::WebView *webView, ci::app::WindowRef window )
+	: mWebView( webView )
+	, mWindow( window )
+{
+	mTouchDataManager = TouchDataManager::create();
+}
+
+WebViewEventHandler::~WebViewEventHandler()
+{
+}
+
+void WebViewEventHandler::handleKeyDown( ci::app::KeyEvent event )
+{
+	// handle cut, copy, paste (as suggested by Simon Geilfus - thanks mate)
+	if ( event.isAccelDown() )
+	{
+		switch ( event.getCode() )
+		{
+		case ci::app::KeyEvent::KEY_x: mWebView->Cut(); return;
+		case ci::app::KeyEvent::KEY_c: mWebView->Copy(); return;
+		case ci::app::KeyEvent::KEY_v: mWebView->Paste(); return;
+		}
+	}
+
+	// other keys
+	mWebView->Focus();
+	mWebView->InjectKeyboardEvent( toKeyEvent( event, Awesomium::WebKeyboardEvent::kTypeKeyDown ) );
+	mWebView->InjectKeyboardEvent( toKeyChar( event ) );
+}
+
+void WebViewEventHandler::handleKeyUp( ci::app::KeyEvent event )
+{
+	mWebView->Focus();
+	mWebView->InjectKeyboardEvent( toKeyEvent( event, Awesomium::WebKeyboardEvent::kTypeKeyUp ) );
+}
+
+void WebViewEventHandler::handleMouseMove( ci::app::MouseEvent event )
+{
+	mWebView->InjectMouseMove( event.getX(), event.getY() );
+}
+
+void WebViewEventHandler::handleMouseDown( ci::app::MouseEvent event )
+{
+	if ( event.isLeft() )
+		mWebView->InjectMouseDown( Awesomium::kMouseButton_Left );
+	else if ( event.isMiddle() )
+		mWebView->InjectMouseDown( Awesomium::kMouseButton_Middle );
+	else if ( event.isRight() )
+		mWebView->InjectMouseDown( Awesomium::kMouseButton_Right );
+}
+
+void WebViewEventHandler::handleMouseDrag( ci::app::MouseEvent event )
+{
+	mWebView->InjectMouseMove( event.getX(), event.getY() );
+}
+
+void WebViewEventHandler::handleMouseUp( ci::app::MouseEvent event )
+{
+	if ( event.isLeft() )
+		mWebView->InjectMouseUp( Awesomium::kMouseButton_Left );
+	else if ( event.isMiddle() )
+		mWebView->InjectMouseUp( Awesomium::kMouseButton_Middle );
+	else if ( event.isRight() )
+		mWebView->InjectMouseUp( Awesomium::kMouseButton_Right );
+}
+
+void WebViewEventHandler::handleMouseWheel( ci::app::MouseEvent event, int increment )
+{
+	mWebView->InjectMouseWheel( increment * int( event.getWheelIncrement() ), 0 );
+}
+
+void WebViewEventHandler::addTouch( int id, ci::ivec2 &pos )
+{
+	mTouchDataManager->addTouch( id, pos, mWindow->getPos() + pos );
+}
+
+void WebViewEventHandler::moveTouch( int id, ci::ivec2 &pos )
+{
+	mTouchDataManager->moveTouch( id, pos, mWindow->getPos() + pos );
+}
+
+void WebViewEventHandler::removeTouch( int id, ci::ivec2 &pos )
+{
+	mTouchDataManager->removeTouch( id, pos, mWindow->getPos() + pos );
+}
+
+void WebViewEventHandler::updateTouches()
+{
+	mWebView->Focus();
+
+	if ( mTouchDataManager->fillWebTouchEventAll( mWebTouchEvent ) )
+		mWebView->InjectTouchEvent( mWebTouchEvent );
+
+/*
+	if( mTouchDataManager->fillWebTouchEventAdd( mWebTouchEvent ) )
+		mWebView->InjectTouchEvent( mWebTouchEvent );
+
+	if ( mTouchDataManager->fillWebTouchEventMove( mWebTouchEvent ) )
+		mWebView->InjectTouchEvent( mWebTouchEvent );
+
+	if ( mTouchDataManager->fillWebTouchEventRemove( mWebTouchEvent ) )
+		mWebView->InjectTouchEvent( mWebTouchEvent );
+*/
+}
+
 
 } } // namespace ph::awesomium

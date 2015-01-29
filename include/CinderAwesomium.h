@@ -7,6 +7,7 @@
 #include "cinder/Exception.h"
 #include "cinder/Surface.h"
 #include "cinder/app/AppBasic.h"
+#include "cinder/app/Window.h"
 #include "cinder/gl/Texture.h"
 
 namespace ph { namespace awesomium {
@@ -55,73 +56,106 @@ Awesomium::WebKeyboardEvent toKeyEvent( ci::app::KeyEvent event, Awesomium::WebK
 
 Awesomium::WebKeyboardEvent toKeyChar( ci::app::KeyEvent event );
 
-// Utility functions that take care of event handling
+// helper class to handle web view events
 
-//! sends a Cinder KeyDown event to the WebView and handles Cut, Copy and Paste
-inline void handleKeyDown( Awesomium::WebView *view, ci::app::KeyEvent event )
+typedef std::shared_ptr< class WebViewEventHandler > WebViewEventHandlerRef;
+typedef std::shared_ptr< class TouchDataManager > TouchDataManagerRef;
+
+class TouchDataManager
 {
-	// handle cut, copy, paste (as suggested by Simon Geilfus - thanks mate)
-	if( event.isAccelDown() )
+private:
+	static const int MAX_TOUCHDATA_NUM = 7; // fixme: in case of 8 touch points awesomium crashes
+
+public:
+	struct TouchData
 	{
-		switch( event.getCode() )
+		enum class Status
 		{
-		case ci::app::KeyEvent::KEY_x: view->Cut(); return;
-		case ci::app::KeyEvent::KEY_c: view->Copy(); return;
-		case ci::app::KeyEvent::KEY_v: view->Paste(); return;
+			ADDED,
+			UPDATED,
+			RELEASED,
+			HANDLED,
+		};
+
+		int mId;
+		int mAwesomiumId;
+		ci::ivec2 mPos;
+		ci::ivec2 mPosScreen;
+		Status mStatus;
+
+		TouchData()
+			: mId( -1 )
+			, mAwesomiumId( -1 )
+			, mPos( ci::ivec2( 0, 0 ) )
+			, mPosScreen( ci::ivec2( 0, 0 ) )
+			, mStatus( Status::HANDLED )
+		{
 		}
-	}
 
-	// other keys
-	view->Focus();
-	view->InjectKeyboardEvent( toKeyEvent( event, Awesomium::WebKeyboardEvent::kTypeKeyDown ) );
-	view->InjectKeyboardEvent( toKeyChar( event ) );
-}
+		TouchData( int id, int awesomiumId, ci::ivec2 pos, ci::ivec2 posScreen, Status status )
+			: mId( id )
+			, mAwesomiumId( awesomiumId )
+			, mPos( pos )
+			, mPosScreen( posScreen )
+			, mStatus( status )
+		{
+		}
+	};
 
-//! sends a Cinder KeyUp event to the WebView
-inline void handleKeyUp( Awesomium::WebView *view, ci::app::KeyEvent event )
-{	
-	view->Focus();
-	view->InjectKeyboardEvent( toKeyEvent( event, Awesomium::WebKeyboardEvent::kTypeKeyUp ) );
-}
+public:
+	static TouchDataManagerRef create() { return TouchDataManagerRef( new TouchDataManager() ); }
+	virtual ~TouchDataManager();
 
-//! sends a Cinder MouseMove event to the WebView
-inline void handleMouseMove( Awesomium::WebView *view, ci::app::MouseEvent event )
+	void addTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen );
+	void moveTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen );
+	void removeTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen );
+
+	bool fillWebTouchEventAll( Awesomium::WebTouchEvent &webTouchEvent );
+	bool fillWebTouchEventAdd( Awesomium::WebTouchEvent &webTouchEvent );
+	bool fillWebTouchEventMove( Awesomium::WebTouchEvent &webTouchEvent );
+	bool fillWebTouchEventRemove( Awesomium::WebTouchEvent &webTouchEvent );
+
+private:
+	TouchDataManager();
+
+	int lockAwesomiumId();
+	void unlockAwesomiumId( int id );
+
+	void fillWebTouchPoint( Awesomium::WebTouchPoint *webTouchPoint, int pos, TouchData &touchData );
+
+private:
+	std::map< int, TouchData > mTouchDataMap;
+	std::set< int > mAvailableAwesomiumIds;
+};
+
+class WebViewEventHandler
 {
-	view->InjectMouseMove( event.getX(), event.getY() );
-}
+public:
+	static WebViewEventHandlerRef create( Awesomium::WebView *webView, ci::app::WindowRef window ) { return WebViewEventHandlerRef( new WebViewEventHandler( webView, window ) ); }
 
-//! sends a Cinder MouseDown event to the WebView
-inline void handleMouseDown( Awesomium::WebView *view, ci::app::MouseEvent event )
-{
-	if( event.isLeft() )
-		view->InjectMouseDown( Awesomium::kMouseButton_Left );
-	else if( event.isMiddle() )
-		view->InjectMouseDown( Awesomium::kMouseButton_Middle );
-	else if( event.isRight() )
-		view->InjectMouseDown( Awesomium::kMouseButton_Right );
-}
+	~WebViewEventHandler();
 
-//! sends a Cinder MouseDrag event to the WebView
-inline void handleMouseDrag( Awesomium::WebView *view, ci::app::MouseEvent event )
-{
-	view->InjectMouseMove( event.getX(), event.getY() );
-}
+	void handleKeyDown( ci::app::KeyEvent event );
+	void handleKeyUp( ci::app::KeyEvent event );
+	void handleMouseMove( ci::app::MouseEvent event );
+	void handleMouseUp( ci::app::MouseEvent event );
+	void handleMouseDrag( ci::app::MouseEvent event );
+	void handleMouseDown( ci::app::MouseEvent event );
+	void handleMouseWheel( ci::app::MouseEvent event, int increment = 150 );
 
-//! sends a Cinder MouseUp event to the WebView
-inline void handleMouseUp( Awesomium::WebView *view, ci::app::MouseEvent event )
-{
-	if( event.isLeft() )
-		view->InjectMouseUp( Awesomium::kMouseButton_Left );
-	else if( event.isMiddle() )
-		view->InjectMouseUp( Awesomium::kMouseButton_Middle );
-	else if( event.isRight() )
-		view->InjectMouseUp( Awesomium::kMouseButton_Right );
-}
+	void addTouch( int id, ci::ivec2 &pos );
+	void moveTouch( int id, ci::ivec2 &pos );
+	void removeTouch( int id, ci::ivec2 &pos );
+	void updateTouches();
 
-//! sends a Cinder MouseWheel event to the WebView
-inline void handleMouseWheel( Awesomium::WebView *view, ci::app::MouseEvent event, int increment=150 )
-{
-	view->InjectMouseWheel( increment * int( event.getWheelIncrement() ), 0 );
-}
+private:
+	WebViewEventHandler( Awesomium::WebView *webView, ci::app::WindowRef window );
+
+private:
+	Awesomium::WebView *mWebView;
+	ci::app::WindowRef mWindow;
+	TouchDataManagerRef mTouchDataManager;
+	Awesomium::WebTouchEvent mWebTouchEvent;
+};
 
 } } // namespace ph::awesomium
