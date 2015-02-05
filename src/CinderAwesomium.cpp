@@ -234,7 +234,6 @@ TouchDataManager::TouchDataManager()
 
 TouchDataManager::~TouchDataManager()
 {
-	assert( mAvailableAwesomiumIds.size() == MAX_TOUCHDATA_NUM );
 }
 
 void TouchDataManager::addTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
