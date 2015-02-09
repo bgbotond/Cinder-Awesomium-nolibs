@@ -106,9 +106,9 @@ public:
 	static TouchDataManagerRef create() { return TouchDataManagerRef( new TouchDataManager() ); }
 	virtual ~TouchDataManager();
 
-	void addTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen );
-	void moveTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen );
-	void removeTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen );
+	void addTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen );
+	void moveTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen );
+	void removeTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen );
 
 	bool fillWebTouchEventAll( Awesomium::WebTouchEvent &webTouchEvent );
 	bool fillWebTouchEventAdd( Awesomium::WebTouchEvent &webTouchEvent );
@@ -143,9 +143,9 @@ public:
 	void handleMouseDown( ci::app::MouseEvent event );
 	void handleMouseWheel( ci::app::MouseEvent event, int increment = 150 );
 
-	void addTouch( int id, ci::ivec2 &pos );
-	void moveTouch( int id, ci::ivec2 &pos );
-	void removeTouch( int id, ci::ivec2 &pos );
+	void addTouch( int id, const ci::ivec2 &pos );
+	void moveTouch( int id, const ci::ivec2 &pos );
+	void removeTouch( int id, const ci::ivec2 &pos );
 	void updateTouches();
 
 private:

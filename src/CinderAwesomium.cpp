@@ -236,7 +236,7 @@ TouchDataManager::~TouchDataManager()
 {
 }
 
-void TouchDataManager::addTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
+void TouchDataManager::addTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen )
 {
 	if ( mTouchDataMap.size() >= MAX_TOUCHDATA_NUM )
 	{
@@ -256,7 +256,7 @@ void TouchDataManager::addTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
 	}
 }
 
-void TouchDataManager::moveTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
+void TouchDataManager::moveTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen )
 {
 	if ( mTouchDataMap.find( id ) == mTouchDataMap.end() )
 	{
@@ -278,7 +278,7 @@ void TouchDataManager::moveTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
 	}
 }
 
-void TouchDataManager::removeTouch( int id, ci::ivec2 &pos, ci::ivec2 &posScreen )
+void TouchDataManager::removeTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen )
 {
 	if ( mTouchDataMap.find( id ) == mTouchDataMap.end() )
 	{
@@ -550,17 +550,17 @@ void WebViewEventHandler::handleMouseWheel( ci::app::MouseEvent event, int incre
 	mWebView->InjectMouseWheel( increment * int( event.getWheelIncrement() ), 0 );
 }
 
-void WebViewEventHandler::addTouch( int id, ci::ivec2 &pos )
+void WebViewEventHandler::addTouch( int id, const ci::ivec2 &pos )
 {
 	mTouchDataManager->addTouch( id, pos, mWindow->getPos() + pos );
 }
 
-void WebViewEventHandler::moveTouch( int id, ci::ivec2 &pos )
+void WebViewEventHandler::moveTouch( int id, const ci::ivec2 &pos )
 {
 	mTouchDataManager->moveTouch( id, pos, mWindow->getPos() + pos );
 }
 
-void WebViewEventHandler::removeTouch( int id, ci::ivec2 &pos )
+void WebViewEventHandler::removeTouch( int id, const ci::ivec2 &pos )
 {
 	mTouchDataManager->removeTouch( id, pos, mWindow->getPos() + pos );
 }
