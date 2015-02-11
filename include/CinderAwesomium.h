@@ -109,6 +109,7 @@ public:
 	void addTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen );
 	void moveTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen );
 	void removeTouch( int id, const ci::ivec2 &pos, const ci::ivec2 &posScreen );
+	void removeTouchAll();
 
 	bool fillWebTouchEventAll( Awesomium::WebTouchEvent &webTouchEvent );
 	bool fillWebTouchEventAdd( Awesomium::WebTouchEvent &webTouchEvent );
@@ -146,6 +147,7 @@ public:
 	void addTouch( int id, const ci::ivec2 &pos );
 	void moveTouch( int id, const ci::ivec2 &pos );
 	void removeTouch( int id, const ci::ivec2 &pos );
+	void removeTouchAll();
 	void updateTouches();
 
 private:

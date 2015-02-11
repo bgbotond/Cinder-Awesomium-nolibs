@@ -301,6 +301,27 @@ void TouchDataManager::removeTouch( int id, const ci::ivec2 &pos, const ci::ivec
 	}
 }
 
+void TouchDataManager::removeTouchAll()
+{
+	CI_LOG_I( "remove touch all" );
+	auto it = mTouchDataMap.begin();
+	while ( it != mTouchDataMap.end() )
+	{
+		if ( it->second.mStatus == TouchData::Status::ADDED )
+		{
+			unlockAwesomiumId( it->second.mAwesomiumId );
+			CI_LOG_I( "delete (" << it->second.mId << ") " << it->second.mPos << " - hasn't been added" );
+			mTouchDataMap.erase( it );
+			continue;
+		}
+
+		CI_LOG_I( "set remove (" << it->second.mId << ") " << it->second.mPos );
+		it->second.mStatus = TouchData::Status::RELEASED;
+
+		++it;
+	}
+}
+
 void TouchDataManager::fillWebTouchPoint( Awesomium::WebTouchPoint *webTouchPoint, int pos, TouchData &touchData )
 {
 	webTouchPoint[ pos ].state = Awesomium::kWebTouchPointState_Stationary;
@@ -565,8 +586,16 @@ void WebViewEventHandler::removeTouch( int id, const ci::ivec2 &pos )
 	mTouchDataManager->removeTouch( id, pos, mWindow->getPos() + pos );
 }
 
+void WebViewEventHandler::removeTouchAll()
+{
+	mTouchDataManager->removeTouchAll();
+}
+
 void WebViewEventHandler::updateTouches()
 {
+	if ( mWebView->IsLoading() )
+		return;
+
 	mWebView->Focus();
 
 	if ( mTouchDataManager->fillWebTouchEventAll( mWebTouchEvent ) )
